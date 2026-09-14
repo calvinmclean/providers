@@ -1,0 +1,247 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+func TestParseWorkspaceURL(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "valid", value: "https://example.cloud.databricks.com/"},
+		{name: "custom domain", value: "https://models.example.com"},
+		{name: "empty", wantErr: true},
+		{name: "http", value: "http://example.com", wantErr: true},
+		{name: "path", value: "https://example.com/workspace", wantErr: true},
+		{name: "query", value: "https://example.com?x=y", wantErr: true},
+		{name: "fragment", value: "https://example.com#fragment", wantErr: true},
+		{name: "userinfo", value: "https://user@example.com", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseWorkspaceURL(test.value)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("parseWorkspaceURL() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestListModels(t *testing.T) {
+	t.Parallel()
+
+	var requests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		requests++
+		if got := req.Header.Get("Authorization"); got != "Bearer secret" {
+			t.Errorf("Authorization = %q", got)
+		}
+		if req.URL.Path != "/api/2.0/serving-endpoints" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if req.URL.Query().Get("page_token") == "next" {
+			_, _ = w.Write([]byte(`{"endpoints":[{"name":"databricks-claude-sonnet-4-5","creator":null,"creation_timestamp":2000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"name":"claude-sonnet-4-5","display_name":"Claude Sonnet 4.5","api_types":["mlflow/v1/responses"]}}]}},{"name":"databricks-gpt-oss-120b","creator":null,"creation_timestamp":3000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"api_types":["mlflow/v1/responses"]}]}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{
+			"next_page_token":"next",
+			"endpoints":[
+				{"name":"databricks-gpt-5","creator":null,"creation_timestamp":1000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses"]}}]}},
+				{"name":"databricks-embedding","creator":null,"task":"llm/v1/embeddings","state":{"ready":"READY"}},
+				{"name":"databricks-chat-only","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/chat/completions"]}}]}},
+				{"name":"databricks-custom","creator":"user@example.com","task":"llm/v1/chat","state":{"ready":"READY"}},
+				{"name":"databricks-not-ready","creator":null,"task":"llm/v1/chat","state":{"ready":"NOT_READY"}},
+				{"name":"other","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"}}
+			]
+		}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	baseURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config{workspaceURL: baseURL, token: "secret", client: upstream.Client()}
+	models, err := cfg.listModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if len(models) != 3 {
+		t.Fatalf("models = %#v", models)
+	}
+	if models[0].ID != "databricks-claude-sonnet-4-5" || models[0].Metadata["dialect"] != "OpenResponses" || models[0].Metadata["displayName"] != "Claude Sonnet 4.5" {
+		t.Errorf("Claude model = %#v", models[0])
+	}
+	if models[1].ID != "databricks-gpt-5" || models[1].Metadata["dialect"] != "OpenAIResponses" {
+		t.Errorf("GPT model = %#v", models[1])
+	}
+	if models[2].ID != "databricks-gpt-oss-120b" || models[2].Metadata["dialect"] != "OpenResponses" {
+		t.Errorf("GPT OSS model = %#v", models[2])
+	}
+}
+
+func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities(t *testing.T) {
+	t.Parallel()
+
+	responsesAPI := []string{"mlflow/v1/responses"}
+	chatCompletionsAPI := []string{"mlflow/v1/chat/completions"}
+
+	for _, test := range []struct {
+		name   string
+		config servingEndpointConfig
+		want   bool
+	}{
+		{
+			name: "responses only",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
+			}},
+			want: true,
+		},
+		{
+			name: "responses only at entity level",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "responses", APITypes: responsesAPI},
+			}},
+			want: true,
+		},
+		{
+			name: "chat completions only",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+			}},
+		},
+		{
+			name: "mixed entities without explicit traffic",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
+				{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+			}},
+		},
+		{
+			name: "mixed APIs on one entity",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "both", FoundationModel: &foundationModel{APITypes: []string{"mlflow/v1/chat/completions", "mlflow/v1/responses"}}},
+			}},
+			want: true,
+		},
+		{
+			name: "missing API metadata",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "missing", FoundationModel: &foundationModel{}},
+			}},
+		},
+		{
+			name: "empty API metadata",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "empty", FoundationModel: &foundationModel{APITypes: []string{}}},
+			}},
+		},
+		{
+			name: "zero traffic unsupported entity is ignored",
+			config: servingEndpointConfig{
+				ServedEntities: []servedEntity{
+					{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
+					{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+				},
+				TrafficConfig: trafficConfig{Routes: []trafficRoute{
+					{ServedModelName: "responses", TrafficPercentage: 100},
+					{ServedModelName: "chat", TrafficPercentage: 0},
+				}},
+			},
+			want: true,
+		},
+		{
+			name: "zero traffic responses entity does not rescue active chat entity",
+			config: servingEndpointConfig{
+				ServedEntities: []servedEntity{
+					{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
+					{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+				},
+				TrafficConfig: trafficConfig{Routes: []trafficRoute{
+					{ServedEntityName: "responses", TrafficPercentage: 0},
+					{ServedEntityName: "chat", TrafficPercentage: 100},
+				}},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			endpoint := servingEndpoint{
+				Name: "databricks-test", Creator: nil, Task: "llm/v1/chat",
+				State: servingEndpointState{Ready: "READY"}, Config: test.config,
+			}
+			if got := isFoundationChatEndpoint(endpoint); got != test.want {
+				t.Errorf("isFoundationChatEndpoint() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestListModelsErrors(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name       string
+		statusCode int
+		body       string
+		want       string
+	}{
+		{name: "upstream", statusCode: http.StatusUnauthorized, body: `{"error":"unauthorized"}`, want: "status 401"},
+		{name: "invalid json", statusCode: http.StatusOK, body: `{`, want: "decode serving endpoints"},
+		{name: "empty", statusCode: http.StatusOK, body: `{"endpoints":[]}`, want: "no ready Databricks"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.statusCode)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			t.Cleanup(upstream.Close)
+			baseURL, _ := url.Parse(upstream.URL)
+			cfg := &config{workspaceURL: baseURL, token: "secret", client: upstream.Client()}
+			_, err := cfg.listModels(context.Background())
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestHandler(t *testing.T) {
+	t.Parallel()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"endpoints":[{"name":"databricks-gpt-5","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses"]}}]}}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+	baseURL, _ := url.Parse(upstream.URL)
+	cfg := &config{workspaceURL: baseURL, token: "secret", listenPort: "1234", client: upstream.Client()}
+
+	health := httptest.NewRecorder()
+	cfg.handler().ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/", nil))
+	if health.Code != http.StatusOK || health.Body.String() != "http://127.0.0.1:1234" {
+		t.Fatalf("health = %d %q", health.Code, health.Body.String())
+	}
+
+	modelsRecorder := httptest.NewRecorder()
+	cfg.handler().ServeHTTP(modelsRecorder, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	var response modelsResponse
+	if err := json.NewDecoder(modelsRecorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if modelsRecorder.Code != http.StatusOK || len(response.Data) != 1 {
+		t.Fatalf("models response = %d %#v", modelsRecorder.Code, response)
+	}
+}
