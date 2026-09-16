@@ -36,6 +36,18 @@ func TestParseWorkspaceURL(t *testing.T) {
 	}
 }
 
+func TestParseWorkspaceURLDefaultsToHTTPS(t *testing.T) {
+	t.Parallel()
+
+	u, err := parseWorkspaceURL("example.cloud.databricks.com")
+	if err != nil {
+		t.Fatalf("parseWorkspaceURL() error = %v", err)
+	}
+	if got, want := u.String(), "https://example.cloud.databricks.com"; got != want {
+		t.Fatalf("parseWorkspaceURL() = %q, want %q", got, want)
+	}
+}
+
 func TestListModels(t *testing.T) {
 	t.Parallel()
 

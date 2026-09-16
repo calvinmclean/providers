@@ -108,6 +108,9 @@ func parseWorkspaceURL(raw string) (*url.URL, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("%s is required", workspaceURLEnv)
 	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", workspaceURLEnv, err)

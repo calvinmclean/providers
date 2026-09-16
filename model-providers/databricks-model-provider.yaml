@@ -8,7 +8,7 @@ link: "https://www.databricks.com/"
 requiredConfigurationParameters:
   - name: "OBOT_DATABRICKS_MODEL_PROVIDER_WORKSPACE_URL"
     friendlyName: "Workspace URL"
-    description: "Databricks workspace URL (for example, https://dbc-xxxxxxxx-xxxx.cloud.databricks.com)."
+    description: "Databricks workspace URL (for example, dbc-xxxxxxxx-xxxx.cloud.databricks.com). HTTPS is used when the scheme is omitted."
     sensitive: false
   - name: "OBOT_DATABRICKS_MODEL_PROVIDER_TOKEN"
     friendlyName: "Personal Access Token"
