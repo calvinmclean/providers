@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 	"time"
 )
@@ -178,13 +177,11 @@ func (c *config) listModels(ctx context.Context) ([]model, error) {
 	if len(result) == 0 {
 		return nil, errors.New("no ready Databricks foundation chat models with Responses API support are available")
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
 }
 
 func isFoundationChatEndpoint(endpoint servingEndpoint) bool {
-	return strings.HasPrefix(endpoint.Name, "databricks-") &&
-		(endpoint.Creator == nil || strings.TrimSpace(*endpoint.Creator) == "") &&
+	return (endpoint.Creator == nil || strings.TrimSpace(*endpoint.Creator) == "") &&
 		endpoint.Task == "llm/v1/chat" &&
 		endpoint.State.Ready == "READY" &&
 		allTrafficReceivingEntitiesSupportResponses(endpoint.Config)
@@ -195,6 +192,9 @@ func allTrafficReceivingEntitiesSupportResponses(config servingEndpointConfig) b
 	return ok
 }
 
+// responsesDialect returns a dialect supported by every entity that can receive traffic.
+// With no explicit routes, it considers all served entities; when both dialects are common,
+// it prefers OpenAIResponses.
 func responsesDialect(config servingEndpointConfig) (string, bool) {
 	if len(config.ServedEntities) == 0 {
 		return "", false

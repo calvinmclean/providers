@@ -75,7 +75,7 @@ func TestListModels(t *testing.T) {
 				{"name":"databricks-meta-llama-3-1-8b-instruct","creation_timestamp":1699610000000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/chat/completions"]}}]}},
 				{"name":"databricks-custom","creator":"user@example.com","task":"llm/v1/chat","state":{"ready":"READY"}},
 				{"name":"databricks-not-ready","creator":null,"task":"llm/v1/chat","state":{"ready":"NOT_READY"}},
-				{"name":"other","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"}}
+				{"name":"other","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["openai/v1/responses"]}}]}}
 			]
 		}`))
 	}))
@@ -93,23 +93,26 @@ func TestListModels(t *testing.T) {
 	if requests != 1 {
 		t.Fatalf("requests = %d, want 1", requests)
 	}
-	if len(models) != 5 {
+	if len(models) != 6 {
 		t.Fatalf("models = %#v", models)
 	}
-	if models[0].ID != "databricks-gpt-5" || models[0].Metadata["dialect"] != "OpenResponses" {
-		t.Errorf("GPT model = %#v", models[0])
+	if models[0].ID != "databricks-qwen3-next-80b-a3b-instruct" || models[0].Metadata["dialect"] != "OpenResponses" || models[0].Metadata["displayName"] != "Qwen3 Next Instruct" {
+		t.Errorf("Qwen model = %#v", models[0])
 	}
-	if models[1].ID != "databricks-gpt-oss-120b" || models[1].Metadata["dialect"] != "OpenResponses" || models[1].Metadata["displayName"] != "GPT OSS 120B" {
-		t.Errorf("GPT OSS model = %#v", models[1])
+	if models[1].ID != "databricks-gpt-5" || models[1].Metadata["dialect"] != "OpenResponses" {
+		t.Errorf("GPT model = %#v", models[1])
 	}
-	if models[2].ID != "databricks-openai-native" || models[2].Metadata["dialect"] != "OpenAIResponses" {
-		t.Errorf("OpenAI-native model = %#v", models[2])
+	if models[2].ID != "databricks-gpt-oss-120b" || models[2].Metadata["dialect"] != "OpenResponses" || models[2].Metadata["displayName"] != "GPT OSS 120B" {
+		t.Errorf("GPT OSS model = %#v", models[2])
 	}
-	if models[3].ID != "databricks-qwen3-next-80b-a3b-instruct" || models[3].Metadata["dialect"] != "OpenResponses" || models[3].Metadata["displayName"] != "Qwen3 Next Instruct" {
-		t.Errorf("Qwen model = %#v", models[3])
+	if models[3].ID != "databricks-openai-native" || models[3].Metadata["dialect"] != "OpenAIResponses" {
+		t.Errorf("OpenAI-native model = %#v", models[3])
 	}
 	if models[4].ID != "databricks-z-both-responses" || models[4].Metadata["dialect"] != "OpenAIResponses" {
 		t.Errorf("dual-dialect model = %#v", models[4])
+	}
+	if models[5].ID != "other" || models[5].Metadata["dialect"] != "OpenAIResponses" {
+		t.Errorf("non-prefixed model = %#v", models[5])
 	}
 }
 
