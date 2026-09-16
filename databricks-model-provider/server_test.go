@@ -60,15 +60,15 @@ func TestListModels(t *testing.T) {
 		if req.URL.Path != "/api/2.0/serving-endpoints" {
 			t.Errorf("path = %q", req.URL.Path)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		if req.URL.Query().Get("page_token") == "next" {
-			_, _ = w.Write([]byte(`{"endpoints":[{"name":"databricks-claude-sonnet-4-5","creator":null,"creation_timestamp":2000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"name":"claude-sonnet-4-5","display_name":"Claude Sonnet 4.5","api_types":["mlflow/v1/responses"]}}]}},{"name":"databricks-gpt-oss-120b","creator":null,"creation_timestamp":3000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"api_types":["mlflow/v1/responses"]}]}}]}`))
-			return
+		if req.URL.RawQuery != "" {
+			t.Errorf("query = %q, want empty", req.URL.RawQuery)
 		}
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"next_page_token":"next",
 			"endpoints":[
+				{"name":"databricks-claude-sonnet-4-5","creator":null,"creation_timestamp":2000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"name":"claude-sonnet-4-5","display_name":"Claude Sonnet 4.5","api_types":["mlflow/v1/responses"]}}]}},
 				{"name":"databricks-gpt-5","creator":null,"creation_timestamp":1000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses"]}}]}},
+				{"name":"databricks-gpt-oss-120b","creator":null,"creation_timestamp":3000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"api_types":["mlflow/v1/responses"]}]}},
 				{"name":"databricks-embedding","creator":null,"task":"llm/v1/embeddings","state":{"ready":"READY"}},
 				{"name":"databricks-chat-only","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/chat/completions"]}}]}},
 				{"name":"databricks-custom","creator":"user@example.com","task":"llm/v1/chat","state":{"ready":"READY"}},
@@ -88,8 +88,8 @@ func TestListModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != 2 {
-		t.Fatalf("requests = %d, want 2", requests)
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
 	}
 	if len(models) != 3 {
 		t.Fatalf("models = %#v", models)

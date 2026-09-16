@@ -28,8 +28,7 @@ type config struct {
 }
 
 type servingEndpointsResponse struct {
-	Endpoints     []servingEndpoint `json:"endpoints"`
-	NextPageToken string            `json:"next_page_token"`
+	Endpoints []servingEndpoint `json:"endpoints"`
 }
 
 type servingEndpoint struct {
@@ -126,53 +125,40 @@ func parseWorkspaceURL(raw string) (*url.URL, error) {
 }
 
 func (c *config) listModels(ctx context.Context) ([]model, error) {
+	endpointURL := c.workspaceURL.JoinPath("api/2.0/serving-endpoints")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create serving endpoints request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("list serving endpoints: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("list serving endpoints: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var response servingEndpointsResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	closeErr := resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("decode serving endpoints: %w", err)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close serving endpoints response: %w", closeErr)
+	}
+
 	var result []model
-	pageToken := ""
-	for {
-		endpointURL := c.workspaceURL.JoinPath("api/2.0/serving-endpoints")
-		if pageToken != "" {
-			query := endpointURL.Query()
-			query.Set("page_token", pageToken)
-			endpointURL.RawQuery = query.Encode()
+	for _, endpoint := range response.Endpoints {
+		if !isFoundationChatEndpoint(endpoint) {
+			continue
 		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointURL.String(), nil)
-		if err != nil {
-			return nil, fmt.Errorf("create serving endpoints request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := c.client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("list serving endpoints: %w", err)
-		}
-		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("list serving endpoints: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		}
-
-		var page servingEndpointsResponse
-		err = json.NewDecoder(resp.Body).Decode(&page)
-		closeErr := resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("decode serving endpoints: %w", err)
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("close serving endpoints response: %w", closeErr)
-		}
-
-		for _, endpoint := range page.Endpoints {
-			if !isFoundationChatEndpoint(endpoint) {
-				continue
-			}
-			result = append(result, modelFromEndpoint(endpoint))
-		}
-		if page.NextPageToken == "" {
-			break
-		}
-		pageToken = page.NextPageToken
+		result = append(result, modelFromEndpoint(endpoint))
 	}
 
 	if len(result) == 0 {
