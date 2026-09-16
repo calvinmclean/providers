@@ -236,6 +236,8 @@ func TestListModelsErrors(t *testing.T) {
 	}{
 		{name: "upstream", statusCode: http.StatusUnauthorized, body: `{"error":"unauthorized"}`, want: "status 401"},
 		{name: "invalid json", statusCode: http.StatusOK, body: `{`, want: "decode serving endpoints"},
+		{name: "trailing json", statusCode: http.StatusOK, body: `{"endpoints":[]} {}`, want: "decode serving endpoints"},
+		{name: "oversized", statusCode: http.StatusOK, body: `{"padding":"` + strings.Repeat("x", 8<<20) + `","endpoints":[]}`, want: "response exceeds 8388608 bytes"},
 		{name: "empty", statusCode: http.StatusOK, body: `{"endpoints":[]}`, want: "no ready Databricks"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

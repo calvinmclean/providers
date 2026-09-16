@@ -23,6 +23,8 @@ const (
 	openResponsesAPI   = "mlflow/v1/responses"
 	openAIResponses    = "OpenAIResponses"
 	openResponses      = "OpenResponses"
+
+	maxServingEndpointsResponseSize = 8 << 20
 )
 
 type config struct {
@@ -148,14 +150,21 @@ func (c *config) listModels(ctx context.Context) ([]model, error) {
 		return nil, fmt.Errorf("list serving endpoints: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	var response servingEndpointsResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxServingEndpointsResponseSize+1))
 	closeErr := resp.Body.Close()
 	if err != nil {
-		return nil, fmt.Errorf("decode serving endpoints: %w", err)
+		return nil, fmt.Errorf("read serving endpoints: %w", err)
+	}
+	if len(body) > maxServingEndpointsResponseSize {
+		return nil, fmt.Errorf("serving endpoints response exceeds %d bytes", maxServingEndpointsResponseSize)
 	}
 	if closeErr != nil {
 		return nil, fmt.Errorf("close serving endpoints response: %w", closeErr)
+	}
+
+	var response servingEndpointsResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode serving endpoints: %w", err)
 	}
 
 	var result []model
