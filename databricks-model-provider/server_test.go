@@ -66,11 +66,13 @@ func TestListModels(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"endpoints":[
-				{"name":"databricks-claude-sonnet-4-5","creator":null,"creation_timestamp":2000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"name":"claude-sonnet-4-5","display_name":"Claude Sonnet 4.5","api_types":["mlflow/v1/responses"]}}]}},
+				{"name":"databricks-qwen3-next-80b-a3b-instruct","creation_timestamp":1699610000000,"task":"llm/v1/chat","state":{"ready":"READY","config_update":"NOT_UPDATING"},"config":{"served_entities":[{"name":"databricks-qwen3-next-80b-a3b-instruct","entity_name":"system.ai.qwen3-next-80b-a3b-instruct","type":"FOUNDATION_MODEL","foundation_model":{"name":"system.ai.qwen3-next-80b-a3b-instruct","display_name":"Qwen3 Next Instruct","api_types":["mlflow/v1/chat/completions","mlflow/v1/responses"]}}]}},
 				{"name":"databricks-gpt-5","creator":null,"creation_timestamp":1000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses"]}}]}},
-				{"name":"databricks-gpt-oss-120b","creator":null,"creation_timestamp":3000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"api_types":["mlflow/v1/responses"]}]}},
-				{"name":"databricks-embedding","creator":null,"task":"llm/v1/embeddings","state":{"ready":"READY"}},
-				{"name":"databricks-chat-only","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/chat/completions"]}}]}},
+				{"name":"databricks-gpt-oss-120b","creation_timestamp":1754179200000,"task":"llm/v1/chat","state":{"ready":"READY","config_update":"NOT_UPDATING"},"config":{"served_entities":[{"name":"databricks-gpt-oss-120b","entity_name":"system.ai.gpt-oss-120b","type":"FOUNDATION_MODEL","foundation_model":{"name":"system.ai.gpt-oss-120b","display_name":"GPT OSS 120B","api_types":["mlflow/v1/chat/completions","mlflow/v1/responses"]}}]}},
+				{"name":"databricks-openai-native","creator":null,"creation_timestamp":4000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["openai/v1/responses"]}}]}},
+				{"name":"databricks-z-both-responses","creator":null,"creation_timestamp":5000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses","openai/v1/responses"]}}]}},
+				{"name":"databricks-gte-large-en","creation_timestamp":1699610000000,"task":"llm/v1/embeddings","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/embeddings"]}}]}},
+				{"name":"databricks-meta-llama-3-1-8b-instruct","creation_timestamp":1699610000000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/chat/completions"]}}]}},
 				{"name":"databricks-custom","creator":"user@example.com","task":"llm/v1/chat","state":{"ready":"READY"}},
 				{"name":"databricks-not-ready","creator":null,"task":"llm/v1/chat","state":{"ready":"NOT_READY"}},
 				{"name":"other","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"}}
@@ -91,17 +93,23 @@ func TestListModels(t *testing.T) {
 	if requests != 1 {
 		t.Fatalf("requests = %d, want 1", requests)
 	}
-	if len(models) != 3 {
+	if len(models) != 5 {
 		t.Fatalf("models = %#v", models)
 	}
-	if models[0].ID != "databricks-claude-sonnet-4-5" || models[0].Metadata["dialect"] != "OpenResponses" || models[0].Metadata["displayName"] != "Claude Sonnet 4.5" {
-		t.Errorf("Claude model = %#v", models[0])
+	if models[0].ID != "databricks-gpt-5" || models[0].Metadata["dialect"] != "OpenResponses" {
+		t.Errorf("GPT model = %#v", models[0])
 	}
-	if models[1].ID != "databricks-gpt-5" || models[1].Metadata["dialect"] != "OpenAIResponses" {
-		t.Errorf("GPT model = %#v", models[1])
+	if models[1].ID != "databricks-gpt-oss-120b" || models[1].Metadata["dialect"] != "OpenResponses" || models[1].Metadata["displayName"] != "GPT OSS 120B" {
+		t.Errorf("GPT OSS model = %#v", models[1])
 	}
-	if models[2].ID != "databricks-gpt-oss-120b" || models[2].Metadata["dialect"] != "OpenResponses" {
-		t.Errorf("GPT OSS model = %#v", models[2])
+	if models[2].ID != "databricks-openai-native" || models[2].Metadata["dialect"] != "OpenAIResponses" {
+		t.Errorf("OpenAI-native model = %#v", models[2])
+	}
+	if models[3].ID != "databricks-qwen3-next-80b-a3b-instruct" || models[3].Metadata["dialect"] != "OpenResponses" || models[3].Metadata["displayName"] != "Qwen3 Next Instruct" {
+		t.Errorf("Qwen model = %#v", models[3])
+	}
+	if models[4].ID != "databricks-z-both-responses" || models[4].Metadata["dialect"] != "OpenAIResponses" {
+		t.Errorf("dual-dialect model = %#v", models[4])
 	}
 }
 
@@ -109,6 +117,7 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 	t.Parallel()
 
 	responsesAPI := []string{"mlflow/v1/responses"}
+	openAIResponsesAPITypes := []string{"openai/v1/responses"}
 	chatCompletionsAPI := []string{"mlflow/v1/chat/completions"}
 
 	for _, test := range []struct {
@@ -131,6 +140,13 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 			want: true,
 		},
 		{
+			name: "OpenAI responses only",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "responses", FoundationModel: &foundationModel{APITypes: openAIResponsesAPITypes}},
+			}},
+			want: true,
+		},
+		{
 			name: "chat completions only",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
 				{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
@@ -149,6 +165,13 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 				{Name: "both", FoundationModel: &foundationModel{APITypes: []string{"mlflow/v1/chat/completions", "mlflow/v1/responses"}}},
 			}},
 			want: true,
+		},
+		{
+			name: "incompatible response dialects without explicit traffic",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{Name: "openresponses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
+				{Name: "openai", FoundationModel: &foundationModel{APITypes: openAIResponsesAPITypes}},
+			}},
 		},
 		{
 			name: "missing API metadata",
@@ -235,7 +258,7 @@ func TestListModelsErrors(t *testing.T) {
 func TestHandler(t *testing.T) {
 	t.Parallel()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"endpoints":[{"name":"databricks-gpt-5","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses"]}}]}}]}`))
+		_, _ = w.Write([]byte(`{"endpoints":[{"name":"databricks-gpt-oss-120b","task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"name":"system.ai.gpt-oss-120b","display_name":"GPT OSS 120B","api_types":["mlflow/v1/chat/completions","mlflow/v1/responses"]}}]}}]}`))
 	}))
 	t.Cleanup(upstream.Close)
 	baseURL, _ := url.Parse(upstream.URL)
@@ -253,7 +276,7 @@ func TestHandler(t *testing.T) {
 	if err := json.NewDecoder(modelsRecorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if modelsRecorder.Code != http.StatusOK || len(response.Data) != 1 {
+	if modelsRecorder.Code != http.StatusOK || len(response.Data) != 1 || response.Data[0].Metadata["dialect"] != "OpenResponses" {
 		t.Fatalf("models response = %d %#v", modelsRecorder.Code, response)
 	}
 }

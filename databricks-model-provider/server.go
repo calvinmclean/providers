@@ -18,6 +18,11 @@ import (
 const (
 	workspaceURLEnv = "OBOT_DATABRICKS_MODEL_PROVIDER_WORKSPACE_URL"
 	tokenEnv        = "OBOT_DATABRICKS_MODEL_PROVIDER_TOKEN"
+
+	openAIResponsesAPI = "openai/v1/responses"
+	openResponsesAPI   = "mlflow/v1/responses"
+	openAIResponses    = "OpenAIResponses"
+	openResponses      = "OpenResponses"
 )
 
 type config struct {
@@ -177,65 +182,95 @@ func isFoundationChatEndpoint(endpoint servingEndpoint) bool {
 }
 
 func allTrafficReceivingEntitiesSupportResponses(config servingEndpointConfig) bool {
+	_, ok := responsesDialect(config)
+	return ok
+}
+
+func responsesDialect(config servingEndpointConfig) (string, bool) {
 	if len(config.ServedEntities) == 0 {
-		return false
+		return "", false
+	}
+
+	common := map[string]bool{
+		openAIResponses: true,
+		openResponses:   true,
+	}
+	hasTraffic := false
+	addEntity := func(entity servedEntity) bool {
+		hasTraffic = true
+		supported := entity.responseDialects()
+		for dialect := range common {
+			if !supported[dialect] {
+				delete(common, dialect)
+			}
+		}
+		return len(common) != 0
 	}
 
 	if len(config.TrafficConfig.Routes) == 0 {
 		for _, entity := range config.ServedEntities {
-			if !entity.supportsResponses() {
-				return false
+			if !addEntity(entity) {
+				return "", false
 			}
 		}
-		return true
+	} else {
+		entitiesByName := make(map[string]servedEntity, len(config.ServedEntities))
+		for _, entity := range config.ServedEntities {
+			entitiesByName[entity.Name] = entity
+		}
+
+		for _, route := range config.TrafficConfig.Routes {
+			if route.TrafficPercentage == 0 {
+				continue
+			}
+			if route.TrafficPercentage < 0 {
+				return "", false
+			}
+			name := route.ServedEntityName
+			if name == "" {
+				name = route.ServedModelName
+			}
+			if name == "" {
+				return "", false
+			}
+			entity, ok := entitiesByName[name]
+			if !ok || !addEntity(entity) {
+				return "", false
+			}
+		}
 	}
 
-	entitiesByName := make(map[string]servedEntity, len(config.ServedEntities))
-	for _, entity := range config.ServedEntities {
-		entitiesByName[entity.Name] = entity
+	if !hasTraffic {
+		return "", false
 	}
-
-	hasTraffic := false
-	for _, route := range config.TrafficConfig.Routes {
-		if route.TrafficPercentage == 0 {
-			continue
-		}
-		if route.TrafficPercentage < 0 {
-			return false
-		}
-		hasTraffic = true
-		name := route.ServedEntityName
-		if name == "" {
-			name = route.ServedModelName
-		}
-		if name == "" {
-			return false
-		}
-		entity, ok := entitiesByName[name]
-		if !ok || !entity.supportsResponses() {
-			return false
-		}
+	if common[openAIResponses] {
+		return openAIResponses, true
 	}
-	return hasTraffic
+	return openResponses, true
 }
 
-func (e servedEntity) supportsResponses() bool {
-	for _, apiType := range e.APITypes {
-		if apiType == "mlflow/v1/responses" {
-			return true
-		}
-	}
-	if e.FoundationModel != nil {
-		for _, apiType := range e.FoundationModel.APITypes {
-			if apiType == "mlflow/v1/responses" {
-				return true
+func (e servedEntity) responseDialects() map[string]bool {
+	result := map[string]bool{}
+	addAPITypes := func(apiTypes []string) {
+		for _, apiType := range apiTypes {
+			switch apiType {
+			case openAIResponsesAPI:
+				result[openAIResponses] = true
+			case openResponsesAPI:
+				result[openResponses] = true
 			}
 		}
 	}
-	return false
+
+	addAPITypes(e.APITypes)
+	if e.FoundationModel != nil {
+		addAPITypes(e.FoundationModel.APITypes)
+	}
+	return result
 }
 
 func modelFromEndpoint(endpoint servingEndpoint) model {
+	dialect, _ := responsesDialect(endpoint.Config)
 	displayName := ""
 	for _, entity := range endpoint.Config.ServedEntities {
 		if entity.FoundationModel == nil {
@@ -251,11 +286,6 @@ func modelFromEndpoint(endpoint servingEndpoint) model {
 	}
 	if displayName == "" {
 		displayName = endpoint.Name
-	}
-
-	dialect := "OpenResponses"
-	if strings.HasPrefix(endpoint.Name, "databricks-gpt-") && !strings.HasPrefix(endpoint.Name, "databricks-gpt-oss-") {
-		dialect = "OpenAIResponses"
 	}
 
 	return model{
