@@ -73,7 +73,7 @@ func TestListModels(t *testing.T) {
 				{"name":"databricks-z-both-responses","creator":null,"creation_timestamp":5000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses","openai/v1/responses"]}}]}},
 				{"name":"databricks-gte-large-en","creation_timestamp":1699610000000,"task":"llm/v1/embeddings","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/embeddings"]}}]}},
 				{"name":"databricks-meta-llama-3-1-8b-instruct","creation_timestamp":1699610000000,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/chat/completions"]}}]}},
-				{"name":"databricks-custom","creator":"user@example.com","task":"llm/v1/chat","state":{"ready":"READY"}},
+				{"name":"databricks-custom","creator":"user@example.com","task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["mlflow/v1/responses"]}}]}},
 				{"name":"databricks-not-ready","creator":null,"task":"llm/v1/chat","state":{"ready":"NOT_READY"}},
 				{"name":"other","creator":null,"task":"llm/v1/chat","state":{"ready":"READY"},"config":{"served_entities":[{"foundation_model":{"api_types":["openai/v1/responses"]}}]}}
 			]
@@ -93,7 +93,7 @@ func TestListModels(t *testing.T) {
 	if requests != 1 {
 		t.Fatalf("requests = %d, want 1", requests)
 	}
-	if len(models) != 6 {
+	if len(models) != 7 {
 		t.Fatalf("models = %#v", models)
 	}
 	if models[0].ID != "databricks-qwen3-next-80b-a3b-instruct" || models[0].Metadata["dialect"] != "OpenResponses" || models[0].Metadata["displayName"] != "Qwen3 Next Instruct" {
@@ -111,8 +111,11 @@ func TestListModels(t *testing.T) {
 	if models[4].ID != "databricks-z-both-responses" || models[4].Metadata["dialect"] != "OpenAIResponses" {
 		t.Errorf("dual-dialect model = %#v", models[4])
 	}
-	if models[5].ID != "other" || models[5].Metadata["dialect"] != "OpenAIResponses" {
-		t.Errorf("non-prefixed model = %#v", models[5])
+	if models[5].ID != "databricks-custom" || models[5].Metadata["dialect"] != "OpenResponses" {
+		t.Errorf("creator-owned model = %#v", models[5])
+	}
+	if models[6].ID != "other" || models[6].Metadata["dialect"] != "OpenAIResponses" {
+		t.Errorf("non-prefixed model = %#v", models[6])
 	}
 }
 
@@ -219,7 +222,7 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			endpoint := servingEndpoint{
-				Name: "databricks-test", Creator: nil, Task: "llm/v1/chat",
+				Name: "databricks-test", Task: "llm/v1/chat",
 				State: servingEndpointState{Ready: "READY"}, Config: test.config,
 			}
 			if got := isFoundationChatEndpoint(endpoint); got != test.want {

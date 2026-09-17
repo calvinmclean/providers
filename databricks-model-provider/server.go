@@ -39,7 +39,6 @@ type servingEndpointsResponse struct {
 
 type servingEndpoint struct {
 	Name              string                `json:"name"`
-	Creator           *string               `json:"creator"`
 	CreationTimestamp int64                 `json:"creation_timestamp"`
 	Task              string                `json:"task"`
 	State             servingEndpointState  `json:"state"`
@@ -181,23 +180,18 @@ func (c *config) listModels(ctx context.Context) ([]model, error) {
 }
 
 func isFoundationChatEndpoint(endpoint servingEndpoint) bool {
-	return (endpoint.Creator == nil || strings.TrimSpace(*endpoint.Creator) == "") &&
-		endpoint.Task == "llm/v1/chat" &&
+	return endpoint.Task == "llm/v1/chat" &&
 		endpoint.State.Ready == "READY" &&
-		allTrafficReceivingEntitiesSupportResponses(endpoint.Config)
+		responsesDialect(endpoint.Config) != ""
 }
 
-func allTrafficReceivingEntitiesSupportResponses(config servingEndpointConfig) bool {
-	_, ok := responsesDialect(config)
-	return ok
-}
-
-// responsesDialect returns a dialect supported by every entity that can receive traffic.
-// With no explicit routes, it considers all served entities; when both dialects are common,
-// it prefers OpenAIResponses.
-func responsesDialect(config servingEndpointConfig) (string, bool) {
+// responsesDialect finds a Responses dialect shared by the served entities referenced by
+// non-zero traffic routes. If no routes are configured, it checks every served entity.
+// It prefers OpenAIResponses when both dialects are supported and returns an empty string
+// when no shared dialect exists.
+func responsesDialect(config servingEndpointConfig) string {
 	if len(config.ServedEntities) == 0 {
-		return "", false
+		return ""
 	}
 
 	common := map[string]bool{
@@ -219,7 +213,7 @@ func responsesDialect(config servingEndpointConfig) (string, bool) {
 	if len(config.TrafficConfig.Routes) == 0 {
 		for _, entity := range config.ServedEntities {
 			if !addEntity(entity) {
-				return "", false
+				return ""
 			}
 		}
 	} else {
@@ -233,29 +227,29 @@ func responsesDialect(config servingEndpointConfig) (string, bool) {
 				continue
 			}
 			if route.TrafficPercentage < 0 {
-				return "", false
+				return ""
 			}
 			name := route.ServedEntityName
 			if name == "" {
 				name = route.ServedModelName
 			}
 			if name == "" {
-				return "", false
+				return ""
 			}
 			entity, ok := entitiesByName[name]
 			if !ok || !addEntity(entity) {
-				return "", false
+				return ""
 			}
 		}
 	}
 
 	if !hasTraffic {
-		return "", false
+		return ""
 	}
 	if common[openAIResponses] {
-		return openAIResponses, true
+		return openAIResponses
 	}
-	return openResponses, true
+	return openResponses
 }
 
 func (e servedEntity) responseDialects() map[string]bool {
@@ -279,7 +273,7 @@ func (e servedEntity) responseDialects() map[string]bool {
 }
 
 func modelFromEndpoint(endpoint servingEndpoint) model {
-	dialect, _ := responsesDialect(endpoint.Config)
+	dialect := responsesDialect(endpoint.Config)
 	displayName := ""
 	for _, entity := range endpoint.Config.ServedEntities {
 		if entity.FoundationModel == nil {
