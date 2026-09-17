@@ -148,7 +148,7 @@ func TestListModels(t *testing.T) {
 	}
 }
 
-func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities(t *testing.T) {
+func TestIsFoundationChatEndpointRequiresResponsesForAllServedEntities(t *testing.T) {
 	t.Parallel()
 
 	responsesAPI := []string{"mlflow/v1/responses"}
@@ -200,7 +200,7 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 			}},
 		},
 		{
-			name: "mixed entities without explicit traffic",
+			name: "entity without responses support",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
 				{
 					Name:            "responses",
@@ -223,7 +223,21 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 			want: true,
 		},
 		{
-			name: "incompatible response dialects without explicit traffic",
+			name: "responses shared by all entities",
+			config: servingEndpointConfig{ServedEntities: []servedEntity{
+				{
+					Name:            "both",
+					FoundationModel: &foundationModel{APITypes: []string{"openai/v1/responses", "mlflow/v1/responses"}},
+				},
+				{
+					Name:            "openresponses",
+					FoundationModel: &foundationModel{APITypes: responsesAPI},
+				},
+			}},
+			want: true,
+		},
+		{
+			name: "incompatible response dialects",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
 				{
 					Name:            "openresponses",
@@ -252,57 +266,6 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 					FoundationModel: &foundationModel{APITypes: []string{}},
 				},
 			}},
-		},
-		{
-			name: "zero traffic unsupported entity is ignored",
-			config: servingEndpointConfig{
-				ServedEntities: []servedEntity{
-					{
-						Name:            "responses",
-						FoundationModel: &foundationModel{APITypes: responsesAPI},
-					},
-					{
-						Name:            "chat",
-						FoundationModel: &foundationModel{APITypes: chatCompletionsAPI},
-					},
-				},
-				TrafficConfig: trafficConfig{Routes: []trafficRoute{
-					{
-						ServedModelName:   "responses",
-						TrafficPercentage: 100,
-					},
-					{
-						ServedModelName:   "chat",
-						TrafficPercentage: 0,
-					},
-				}},
-			},
-			want: true,
-		},
-		{
-			name: "zero traffic responses entity does not rescue active chat entity",
-			config: servingEndpointConfig{
-				ServedEntities: []servedEntity{
-					{
-						Name:            "responses",
-						FoundationModel: &foundationModel{APITypes: responsesAPI},
-					},
-					{
-						Name:            "chat",
-						FoundationModel: &foundationModel{APITypes: chatCompletionsAPI},
-					},
-				},
-				TrafficConfig: trafficConfig{Routes: []trafficRoute{
-					{
-						ServedEntityName:  "responses",
-						TrafficPercentage: 0,
-					},
-					{
-						ServedEntityName:  "chat",
-						TrafficPercentage: 100,
-					},
-				}},
-			},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

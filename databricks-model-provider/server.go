@@ -51,7 +51,6 @@ type servingEndpointState struct {
 
 type servingEndpointConfig struct {
 	ServedEntities []servedEntity `json:"served_entities"`
-	TrafficConfig  trafficConfig  `json:"traffic_config"`
 }
 
 type servedEntity struct {
@@ -64,16 +63,6 @@ type foundationModel struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
 	APITypes    []string `json:"api_types"`
-}
-
-type trafficConfig struct {
-	Routes []trafficRoute `json:"routes"`
-}
-
-type trafficRoute struct {
-	ServedModelName   string  `json:"served_model_name"`
-	ServedEntityName  string  `json:"served_entity_name"`
-	TrafficPercentage float64 `json:"traffic_percentage"`
 }
 
 type modelsResponse struct {
@@ -185,8 +174,7 @@ func isFoundationChatEndpoint(endpoint servingEndpoint) bool {
 		responsesDialect(endpoint.Config) != ""
 }
 
-// responsesDialect finds a Responses dialect shared by the served entities referenced by
-// non-zero traffic routes. If no routes are configured, it checks every served entity.
+// responsesDialect finds a Responses dialect shared by every served entity in an endpoint.
 // It prefers OpenAIResponses when both dialects are supported and returns an empty string
 // when no shared dialect exists.
 func responsesDialect(config servingEndpointConfig) string {
@@ -198,53 +186,16 @@ func responsesDialect(config servingEndpointConfig) string {
 		openAIResponses: true,
 		openResponses:   true,
 	}
-	hasTraffic := false
-	addEntity := func(entity servedEntity) bool {
-		hasTraffic = true
+	for _, entity := range config.ServedEntities {
 		supported := entity.responseDialects()
 		for dialect := range common {
 			if !supported[dialect] {
 				delete(common, dialect)
 			}
 		}
-		return len(common) != 0
-	}
-
-	if len(config.TrafficConfig.Routes) == 0 {
-		for _, entity := range config.ServedEntities {
-			if !addEntity(entity) {
-				return ""
-			}
+		if len(common) == 0 {
+			return ""
 		}
-	} else {
-		entitiesByName := make(map[string]servedEntity, len(config.ServedEntities))
-		for _, entity := range config.ServedEntities {
-			entitiesByName[entity.Name] = entity
-		}
-
-		for _, route := range config.TrafficConfig.Routes {
-			if route.TrafficPercentage == 0 {
-				continue
-			}
-			if route.TrafficPercentage < 0 {
-				return ""
-			}
-			name := route.ServedEntityName
-			if name == "" {
-				name = route.ServedModelName
-			}
-			if name == "" {
-				return ""
-			}
-			entity, ok := entitiesByName[name]
-			if !ok || !addEntity(entity) {
-				return ""
-			}
-		}
-	}
-
-	if !hasTraffic {
-		return ""
 	}
 	if common[openAIResponses] {
 		return openAIResponses
