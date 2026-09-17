@@ -37,6 +37,32 @@ type servingEndpointsResponse struct {
 	Endpoints []servingEndpoint `json:"endpoints"`
 }
 
+type databricksErrorResponse struct {
+	Message string `json:"message"`
+}
+
+type upstreamResponseError struct {
+	Operation  string
+	StatusCode int
+	Message    string
+	Body       string
+}
+
+func (e *upstreamResponseError) Error() string {
+	detail := e.Message
+	if detail == "" {
+		detail = e.Body
+	}
+	return fmt.Sprintf("%s: status %d: %s", e.Operation, e.StatusCode, detail)
+}
+
+func (e *upstreamResponseError) userMessage() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return fmt.Sprintf("Databricks request failed with status %d", e.StatusCode)
+}
+
 type servingEndpoint struct {
 	Name              string                `json:"name"`
 	CreationTimestamp int64                 `json:"creation_timestamp"`
@@ -134,7 +160,14 @@ func (c *config) listModels(ctx context.Context) ([]model, error) {
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("list serving endpoints: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		var errorResponse databricksErrorResponse
+		_ = json.Unmarshal(body, &errorResponse)
+		return nil, &upstreamResponseError{
+			Operation:  "list serving endpoints",
+			StatusCode: resp.StatusCode,
+			Message:    strings.TrimSpace(errorResponse.Message),
+			Body:       strings.TrimSpace(string(body)),
+		}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxServingEndpointsResponseSize+1))

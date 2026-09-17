@@ -288,12 +288,13 @@ func TestListModelsErrors(t *testing.T) {
 		statusCode int
 		body       string
 		want       string
+		wantExact  string
 	}{
 		{
 			name:       "upstream",
 			statusCode: http.StatusUnauthorized,
-			body:       `{"error":"unauthorized"}`,
-			want:       "status 401",
+			body:       `{"error_code":401,"message":"Credential was not sent or was of an unsupported type for this API."}`,
+			wantExact:  "list serving endpoints: status 401: Credential was not sent or was of an unsupported type for this API.",
 		},
 		{
 			name:       "invalid json",
@@ -330,7 +331,13 @@ func TestListModelsErrors(t *testing.T) {
 			baseURL, _ := url.Parse(upstream.URL)
 			cfg := &config{workspaceURL: baseURL, token: "secret", client: upstream.Client()}
 			_, err := cfg.listModels(context.Background())
-			if err == nil || !strings.Contains(err.Error(), test.want) {
+			if err == nil {
+				t.Fatalf("expected error")
+			}
+			if test.wantExact != "" && err.Error() != test.wantExact {
+				t.Fatalf("error = %q, want %q", err, test.wantExact)
+			}
+			if test.want != "" && !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want containing %q", err, test.want)
 			}
 		})
