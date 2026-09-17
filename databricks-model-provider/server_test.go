@@ -17,14 +17,43 @@ func TestParseWorkspaceURL(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		{name: "valid", value: "https://example.cloud.databricks.com/"},
-		{name: "custom domain", value: "https://models.example.com"},
-		{name: "empty", wantErr: true},
-		{name: "http", value: "http://example.com", wantErr: true},
-		{name: "path", value: "https://example.com/workspace", wantErr: true},
-		{name: "query", value: "https://example.com?x=y", wantErr: true},
-		{name: "fragment", value: "https://example.com#fragment", wantErr: true},
-		{name: "userinfo", value: "https://user@example.com", wantErr: true},
+		{
+			name:  "valid",
+			value: "https://example.cloud.databricks.com/",
+		},
+		{
+			name:  "custom domain",
+			value: "https://models.example.com",
+		},
+		{
+			name:    "empty",
+			wantErr: true,
+		},
+		{
+			name:    "http",
+			value:   "http://example.com",
+			wantErr: true,
+		},
+		{
+			name:    "path",
+			value:   "https://example.com/workspace",
+			wantErr: true,
+		},
+		{
+			name:    "query",
+			value:   "https://example.com?x=y",
+			wantErr: true,
+		},
+		{
+			name:    "fragment",
+			value:   "https://example.com#fragment",
+			wantErr: true,
+		},
+		{
+			name:    "userinfo",
+			value:   "https://user@example.com",
+			wantErr: true,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -134,73 +163,118 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 		{
 			name: "responses only",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
+				{
+					Name:            "responses",
+					FoundationModel: &foundationModel{APITypes: responsesAPI},
+				},
 			}},
 			want: true,
 		},
 		{
 			name: "responses only at entity level",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "responses", APITypes: responsesAPI},
+				{
+					Name:     "responses",
+					APITypes: responsesAPI,
+				},
 			}},
 			want: true,
 		},
 		{
 			name: "OpenAI responses only",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "responses", FoundationModel: &foundationModel{APITypes: openAIResponsesAPITypes}},
+				{
+					Name:            "responses",
+					FoundationModel: &foundationModel{APITypes: openAIResponsesAPITypes},
+				},
 			}},
 			want: true,
 		},
 		{
 			name: "chat completions only",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+				{
+					Name:            "chat",
+					FoundationModel: &foundationModel{APITypes: chatCompletionsAPI},
+				},
 			}},
 		},
 		{
 			name: "mixed entities without explicit traffic",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
-				{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+				{
+					Name:            "responses",
+					FoundationModel: &foundationModel{APITypes: responsesAPI},
+				},
+				{
+					Name:            "chat",
+					FoundationModel: &foundationModel{APITypes: chatCompletionsAPI},
+				},
 			}},
 		},
 		{
 			name: "mixed APIs on one entity",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "both", FoundationModel: &foundationModel{APITypes: []string{"mlflow/v1/chat/completions", "mlflow/v1/responses"}}},
+				{
+					Name:            "both",
+					FoundationModel: &foundationModel{APITypes: []string{"mlflow/v1/chat/completions", "mlflow/v1/responses"}},
+				},
 			}},
 			want: true,
 		},
 		{
 			name: "incompatible response dialects without explicit traffic",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "openresponses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
-				{Name: "openai", FoundationModel: &foundationModel{APITypes: openAIResponsesAPITypes}},
+				{
+					Name:            "openresponses",
+					FoundationModel: &foundationModel{APITypes: responsesAPI},
+				},
+				{
+					Name:            "openai",
+					FoundationModel: &foundationModel{APITypes: openAIResponsesAPITypes},
+				},
 			}},
 		},
 		{
 			name: "missing API metadata",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "missing", FoundationModel: &foundationModel{}},
+				{
+					Name:            "missing",
+					FoundationModel: &foundationModel{},
+				},
 			}},
 		},
 		{
 			name: "empty API metadata",
 			config: servingEndpointConfig{ServedEntities: []servedEntity{
-				{Name: "empty", FoundationModel: &foundationModel{APITypes: []string{}}},
+				{
+					Name:            "empty",
+					FoundationModel: &foundationModel{APITypes: []string{}},
+				},
 			}},
 		},
 		{
 			name: "zero traffic unsupported entity is ignored",
 			config: servingEndpointConfig{
 				ServedEntities: []servedEntity{
-					{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
-					{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+					{
+						Name:            "responses",
+						FoundationModel: &foundationModel{APITypes: responsesAPI},
+					},
+					{
+						Name:            "chat",
+						FoundationModel: &foundationModel{APITypes: chatCompletionsAPI},
+					},
 				},
 				TrafficConfig: trafficConfig{Routes: []trafficRoute{
-					{ServedModelName: "responses", TrafficPercentage: 100},
-					{ServedModelName: "chat", TrafficPercentage: 0},
+					{
+						ServedModelName:   "responses",
+						TrafficPercentage: 100,
+					},
+					{
+						ServedModelName:   "chat",
+						TrafficPercentage: 0,
+					},
 				}},
 			},
 			want: true,
@@ -209,12 +283,24 @@ func TestIsFoundationChatEndpointRequiresResponsesForAllTrafficReceivingEntities
 			name: "zero traffic responses entity does not rescue active chat entity",
 			config: servingEndpointConfig{
 				ServedEntities: []servedEntity{
-					{Name: "responses", FoundationModel: &foundationModel{APITypes: responsesAPI}},
-					{Name: "chat", FoundationModel: &foundationModel{APITypes: chatCompletionsAPI}},
+					{
+						Name:            "responses",
+						FoundationModel: &foundationModel{APITypes: responsesAPI},
+					},
+					{
+						Name:            "chat",
+						FoundationModel: &foundationModel{APITypes: chatCompletionsAPI},
+					},
 				},
 				TrafficConfig: trafficConfig{Routes: []trafficRoute{
-					{ServedEntityName: "responses", TrafficPercentage: 0},
-					{ServedEntityName: "chat", TrafficPercentage: 100},
+					{
+						ServedEntityName:  "responses",
+						TrafficPercentage: 0,
+					},
+					{
+						ServedEntityName:  "chat",
+						TrafficPercentage: 100,
+					},
 				}},
 			},
 		},
@@ -240,11 +326,36 @@ func TestListModelsErrors(t *testing.T) {
 		body       string
 		want       string
 	}{
-		{name: "upstream", statusCode: http.StatusUnauthorized, body: `{"error":"unauthorized"}`, want: "status 401"},
-		{name: "invalid json", statusCode: http.StatusOK, body: `{`, want: "decode serving endpoints"},
-		{name: "trailing json", statusCode: http.StatusOK, body: `{"endpoints":[]} {}`, want: "decode serving endpoints"},
-		{name: "oversized", statusCode: http.StatusOK, body: `{"padding":"` + strings.Repeat("x", 8<<20) + `","endpoints":[]}`, want: "response exceeds 8388608 bytes"},
-		{name: "empty", statusCode: http.StatusOK, body: `{"endpoints":[]}`, want: "no ready Databricks"},
+		{
+			name:       "upstream",
+			statusCode: http.StatusUnauthorized,
+			body:       `{"error":"unauthorized"}`,
+			want:       "status 401",
+		},
+		{
+			name:       "invalid json",
+			statusCode: http.StatusOK,
+			body:       `{`,
+			want:       "decode serving endpoints",
+		},
+		{
+			name:       "trailing json",
+			statusCode: http.StatusOK,
+			body:       `{"endpoints":[]} {}`,
+			want:       "decode serving endpoints",
+		},
+		{
+			name:       "oversized",
+			statusCode: http.StatusOK,
+			body:       `{"padding":"` + strings.Repeat("x", 8<<20) + `","endpoints":[]}`,
+			want:       "response exceeds 8388608 bytes",
+		},
+		{
+			name:       "empty",
+			statusCode: http.StatusOK,
+			body:       `{"endpoints":[]}`,
+			want:       "no ready Databricks",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

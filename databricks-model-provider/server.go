@@ -294,7 +294,7 @@ func modelFromEndpoint(endpoint servingEndpoint) model {
 	return model{
 		ID:      endpoint.Name,
 		Object:  "model",
-		Created: endpoint.CreationTimestamp / 1000,
+		Created: time.UnixMilli(endpoint.CreationTimestamp).Unix(),
 		OwnedBy: "databricks",
 		Metadata: map[string]string{
 			"displayName": displayName,
